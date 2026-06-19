@@ -1,6 +1,6 @@
 name = "Charm Craft"
-client_id = "YOUR_CLIENT_ID_FROM_PARTNERS_DASHBOARD"
-application_url = "https://charm-craft-app.vercel.app"
+client_id = "f111ef9fd18130fc895780673cab117c"
+application_url = "https://charmcraft-seven.vercel.app"
 embedded = true
 
 [access_scopes]
@@ -8,7 +8,7 @@ scopes = "read_products,write_products,read_orders,write_orders,read_customers,w
 
 [auth]
 redirect_urls = [
-  "https://charm-craft-app.vercel.app/api/auth/callback",
+  "https://charmcraft-seven.vercel.app/api/auth/callback",
   "http://localhost:3001/api/auth/callback"
 ]
 
@@ -28,7 +28,7 @@ api_version = "2024-01"
   uri = "/api/webhooks"
 
 [app_proxy]
-url = "https://charm-craft-app.vercel.app/api/proxy"
+url = "https://charmcraft-seven.vercel.app/api/proxy"
 subpath = "charmcraft"
 prefix = "apps"
 
