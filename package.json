@@ -1,0 +1,33 @@
+{
+  "name": "charm-craft-shopify-app",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev -p 3001",
+    "build": "prisma generate && next build",
+    "start": "next start -p 3001",
+    "db:push": "prisma db push",
+    "db:studio": "prisma studio"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "@shopify/app-bridge-react": "^3.7.11",
+    "@shopify/polaris": "^12.27.0",
+    "@shopify/shopify-api": "^10.0.0",
+    "cookie": "^1.1.1",
+    "js-cookie": "^3.0.8",
+    "jsonwebtoken": "^9.0.3",
+    "next": "^14.2.35",
+    "prisma": "^6.19.3",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/js-cookie": "^3.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/node": "^25.9.3",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "^6.0.3"
+  }
+}

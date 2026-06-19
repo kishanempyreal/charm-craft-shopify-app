@@ -1,0 +1,12 @@
+api_version = "2024-01"
+
+[[extensions]]
+type = "theme"
+name = "Charm Configurator"
+handle = "charm-configurator"
+
+  [extensions.targeting]
+    [[extensions.targeting.targets]]
+    target = "section"
+    template = "page"
+    schema = "./blocks/charm-configurator.schema.json"

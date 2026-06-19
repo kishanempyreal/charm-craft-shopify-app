@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// Shopify OAuth sessions
+model Session {
+  id          String   @id
+  shop        String
+  state       String
+  isOnline    Boolean  @default(false)
+  scope       String?
+  expires     DateTime?
+  accessToken String
+  userId      BigInt?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop])
+}
+
+// Saved necklace designs (per customer)
+model Design {
+  id          String   @id @default(cuid())
+  shop        String
+  customerId  String?
+  name        String   @default("My Design")
+  designData  String   // JSON string of charm positions
+  previewUrl  String?  // Generated preview image URL
+  shareToken  String   @unique @default(cuid())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([shop])
+  @@index([customerId])
+  @@index([shareToken])
+}
+
+// App settings per shop
+model AppSettings {
+  id                String   @id @default(cuid())
+  shop              String   @unique
+  currencyCode      String   @default("INR")
+  enablingEngraving Boolean  @default(true)
+  maxCharms         Int      @default(8)
+  defaultChainId    String?
+  customCss         String?
+  configuratorTitle String   @default("Build Your Necklace")
+  updatedAt         DateTime @updatedAt
+
+  @@index([shop])
+}
+
+// Charm slot configurations (admin-defined slot positions per chain)
+model ChainSlotConfig {
+  id        String   @id @default(cuid())
+  shop      String
+  chainId   String   // Shopify product ID
+  chainName String
+  slots     String   // JSON array of {id, x, y, label}
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([shop, chainId])
+  @@index([shop])
+}
