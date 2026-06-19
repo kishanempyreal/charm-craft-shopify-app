@@ -326,7 +326,7 @@
       // Fetch charm config from App Proxy
       var shop = (window.__charmcraft && window.__charmcraft.shop) ? window.__charmcraft.shop : SHOP;
       var handle = (window.__charmcraft && window.__charmcraft.productHandle) ? window.__charmcraft.productHandle : PRODUCT_HANDLE;
-      var proxyUrl = '/apps/charmcraft/charm-config?product=' + encodeURIComponent(handle) + '&shop=' + encodeURIComponent(shop);
+      var proxyUrl = '/apps/charmcraft?product=' + encodeURIComponent(handle) + '&shop=' + encodeURIComponent(shop);
 
       fetch(proxyUrl)
         .then(function (res) { return res.json(); })
