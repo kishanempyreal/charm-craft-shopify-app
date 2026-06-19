@@ -1,354 +1,638 @@
 (function () {
   'use strict';
 
-  const APP_URL = 'https://charmcraft-seven.vercel.app';
-  const SHOP = window.Shopify?.shop || document.querySelector('[data-shop]')?.dataset?.shop || '';
+  // Direct Vercel API — no App Proxy dependency
+  var API = 'https://charmcraft-seven.vercel.app/api/proxy';
 
-  // Get current product handle from Shopify global
-  const PRODUCT_HANDLE = window.ShopifyAnalytics?.meta?.product?.handle
-    || document.querySelector('[data-product-handle]')?.dataset?.productHandle
-    || window.location.pathname.split('/products/')[1]?.split('?')[0]
-    || '';
+  // Get product handle from URL
+  var HANDLE = '';
+  try {
+    var m = window.location.pathname.match(/\/products\/([^/?#]+)/);
+    if (m) HANDLE = m[1];
+  } catch (e) {}
+  if (!HANDLE) return;
 
-  // Find where to inject the configurator (after the product form / add-to-cart section)
-  function findProductFormContainer() {
-    return (
-      document.querySelector('[data-product-form]') ||
-      document.querySelector('.product-form') ||
-      document.querySelector('#product_form') ||
-      document.querySelector('form[action="/cart/add"]') ||
-      document.querySelector('.product__info-wrapper') ||
-      document.querySelector('.product-single__meta')
-    );
-  }
-
-  // State
-  const state = {
+  // ─── STATE ──────────────────────────────────────────────
+  var S = {
+    loading: true,
     config: null,
     slots: [],
-    selectedSlot: null,
-    selectedVariantTitle: null,
-    loading: true,
-    adding: false,
+    active: null,
+    cat: 'all',
+    variantTitle: ''
   };
 
-  function getActiveCharms() {
-    if (!state.config) return [];
-    const { variations, charms } = state.config;
-    if (state.selectedVariantTitle && variations && variations.length > 0) {
-      const varConfig = variations.find(function (v) {
-        return v.variantTitle && v.variantTitle.toLowerCase() === state.selectedVariantTitle.toLowerCase();
-      });
-      if (varConfig && varConfig.charmIds && varConfig.charmIds.length > 0) {
-        return charms.filter(function (c) { return varConfig.charmIds.includes(c.id); });
+  // ─── STYLES ─────────────────────────────────────────────
+  var CSS = `
+    #cc-wrap {
+      margin: 28px 0 0;
+      border-top: 1px solid #e8dcc8;
+      padding-top: 24px;
+      font-family: inherit;
+    }
+    #cc-wrap * { box-sizing: border-box; }
+
+    .cc-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .cc-head-bar {
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, #c9a84c55, transparent);
+    }
+    .cc-head-bar.right {
+      background: linear-gradient(270deg, #c9a84c55, transparent);
+    }
+    .cc-head-text {
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: #2a1a00;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+    .cc-gem {
+      width: 16px;
+      height: 16px;
+      background: linear-gradient(135deg, #c9a84c, #f5d76e);
+      clip-path: polygon(50% 0%,100% 35%,80% 100%,20% 100%,0% 35%);
+    }
+
+    /* ── NECKLACE CHAIN ── */
+    .cc-necklace {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 12px 8px;
+      margin-bottom: 10px;
+    }
+    .cc-chain-svg {
+      position: absolute;
+      top: 50%; left: 5%; right: 5%;
+      width: 90%; height: 2px;
+      transform: translateY(-50%);
+      z-index: 0;
+    }
+    .cc-chain-path {
+      stroke: url(#ccGold);
+      stroke-width: 2;
+      fill: none;
+      stroke-dasharray: 4 3;
+    }
+
+    .cc-slot {
+      position: relative;
+      z-index: 1;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      border: 2px dashed #d4b96680;
+      background: #fafaf8;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin: 0 7px;
+      transition: border-color 0.15s, transform 0.15s, box-shadow 0.15s;
+    }
+    .cc-slot:hover {
+      border-color: #c9a84c;
+      transform: scale(1.07);
+      box-shadow: 0 0 0 4px #c9a84c22;
+    }
+    .cc-slot.cc-active {
+      border: 2.5px solid #c9a84c;
+      box-shadow: 0 0 0 5px #c9a84c30;
+      background: #fffbf0;
+      transform: scale(1.12);
+    }
+    .cc-slot.cc-filled {
+      border: 2px solid #c9a84c;
+      background: #fff;
+      box-shadow: 0 2px 8px #c9a84c44;
+    }
+    .cc-slot img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 50%;
+    }
+    .cc-slot-empty-icon {
+      font-size: 0.7rem;
+      color: #c9a84c99;
+      font-weight: 700;
+    }
+    .cc-slot-rm {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      width: 18px;
+      height: 18px;
+      background: #fff;
+      border: 1.5px solid #e53935;
+      border-radius: 50%;
+      color: #e53935;
+      font-size: 10px;
+      font-weight: 900;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      z-index: 2;
+    }
+
+    .cc-instruction {
+      text-align: center;
+      font-size: 0.76rem;
+      color: #b0915a;
+      margin-bottom: 14px;
+      font-style: italic;
+      min-height: 18px;
+    }
+
+    /* ── CATEGORY TABS ── */
+    .cc-tabs {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .cc-tab {
+      padding: 4px 13px;
+      border-radius: 20px;
+      font-size: 0.73rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: 1.5px solid #e8dcc8;
+      background: #fff;
+      color: #8a7050;
+      transition: all 0.12s;
+      white-space: nowrap;
+      text-transform: capitalize;
+    }
+    .cc-tab:hover, .cc-tab.cc-on {
+      border-color: #c9a84c;
+      background: linear-gradient(135deg, #c9a84c, #e8c06a);
+      color: #fff;
+    }
+
+    /* ── CHARM GRID ── */
+    .cc-grid-label {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: #6a5030;
+      margin-bottom: 8px;
+    }
+    .cc-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+      gap: 8px;
+      max-height: 280px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+    .cc-grid::-webkit-scrollbar { width: 3px; }
+    .cc-grid::-webkit-scrollbar-thumb { background: #d4b966; border-radius: 4px; }
+
+    .cc-card {
+      border: 1.5px solid #ede8de;
+      border-radius: 10px;
+      padding: 10px 6px 8px;
+      cursor: pointer;
+      text-align: center;
+      background: #fff;
+      transition: all 0.15s ease;
+    }
+    .cc-card:hover {
+      border-color: #c9a84c;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 14px #c9a84c28;
+    }
+    .cc-card.cc-dim {
+      opacity: 0.38;
+      cursor: not-allowed;
+      pointer-events: none;
+    }
+    .cc-card img {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      object-fit: cover;
+      display: block;
+      margin: 0 auto 6px;
+      background: #f5f0e8;
+    }
+    .cc-card-ph {
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #f5f0e8, #e8dcc8);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.3rem;
+      margin: 0 auto 6px;
+    }
+    .cc-card-name {
+      font-size: 0.64rem;
+      font-weight: 600;
+      color: #333;
+      line-height: 1.3;
+      margin-bottom: 2px;
+    }
+    .cc-card-price {
+      font-size: 0.71rem;
+      font-weight: 700;
+      color: #b08828;
+    }
+    .cc-badge {
+      display: inline-block;
+      font-size: 0.54rem;
+      font-weight: 700;
+      padding: 1px 5px;
+      border-radius: 3px;
+      margin-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .cc-b-eng { background: #e8f5e9; color: #2e7d32; }
+    .cc-b-prm { background: #fff3e0; color: #e65100; }
+
+    /* ── SUMMARY ── */
+    .cc-summary {
+      margin-top: 14px;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, #fffbf0 0%, #fff8e4 100%);
+      border: 1px solid #e8d49a;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .cc-sum-info {
+      font-size: 0.8rem;
+      color: #6a5030;
+    }
+    .cc-sum-names {
+      font-size: 0.72rem;
+      color: #999;
+      margin-top: 1px;
+    }
+    .cc-sum-price {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: #c9a84c;
+      white-space: nowrap;
+    }
+
+    /* ── LOADING ── */
+    .cc-loading-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 14px;
+      color: #b09070;
+      font-size: 0.82rem;
+    }
+    .cc-spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid #f0e8d4;
+      border-top-color: #c9a84c;
+      border-radius: 50%;
+      animation: cc-spin 0.65s linear infinite;
+      flex-shrink: 0;
+    }
+    @keyframes cc-spin { to { transform: rotate(360deg); } }
+
+    /* ── EMPTY ── */
+    .cc-empty {
+      text-align: center;
+      padding: 20px;
+      color: #bbb;
+      font-size: 0.8rem;
+      border: 1.5px dashed #e0d8c8;
+      border-radius: 10px;
+    }
+
+    @media (max-width: 749px) {
+      .cc-slot { width: 48px; height: 48px; margin: 0 5px; }
+      .cc-grid { grid-template-columns: repeat(3, 1fr); max-height: 230px; }
+    }
+  `;
+
+  // ─── HELPERS ────────────────────────────────────────────
+  function fmt(n) {
+    return '₹' + parseFloat(n).toLocaleString('en-IN');
+  }
+
+  function getCharms() {
+    if (!S.config) return [];
+    var all = S.config.charms || [];
+    if (S.variantTitle && S.config.variations && S.config.variations.length) {
+      var vConf = null;
+      for (var i = 0; i < S.config.variations.length; i++) {
+        if ((S.config.variations[i].variantTitle || '').toLowerCase() === S.variantTitle.toLowerCase()) {
+          vConf = S.config.variations[i];
+          break;
+        }
+      }
+      if (vConf && vConf.charmIds && vConf.charmIds.length) {
+        all = all.filter(function (c) { return vConf.charmIds.indexOf(c.id) >= 0; });
       }
     }
-    return charms || [];
+    if (S.cat === 'all') return all;
+    return all.filter(function (c) { return c.category === S.cat; });
   }
 
-  function getMaxSlots() {
-    if (!state.config) return 5;
-    const { variations } = state.config;
-    if (state.selectedVariantTitle && variations && variations.length > 0) {
-      const varConfig = variations.find(function (v) {
-        return v.variantTitle && v.variantTitle.toLowerCase() === state.selectedVariantTitle.toLowerCase();
-      });
-      if (varConfig && varConfig.maxSlots) return varConfig.maxSlots;
-    }
-    return state.config.maxSlots || 5;
-  }
-
-  function fmt(price) {
-    return '₹' + parseFloat(price).toLocaleString('en-IN');
+  function getCats() {
+    if (!S.config || !S.config.charms) return [];
+    var seen = { all: true };
+    var cats = ['all'];
+    (S.config.charms || []).forEach(function (c) {
+      if (!seen[c.category]) { seen[c.category] = true; cats.push(c.category); }
+    });
+    return cats;
   }
 
   function totalExtra() {
-    return state.slots.filter(Boolean).reduce(function (s, c) { return s + (c && c.price ? c.price : 0); }, 0);
+    return S.slots.reduce(function (s, c) { return s + (c ? (parseFloat(c.price) || 0) : 0); }, 0);
   }
 
-  // Inject styles
-  function injectStyles() {
-    if (document.getElementById('cc-styles')) return;
-    var style = document.createElement('style');
-    style.id = 'cc-styles';
-    style.textContent = [
-      '#cc-configurator { margin-top: 24px; border-top: 2px solid #f0e6cc; padding-top: 24px; }',
-      '#cc-configurator * { box-sizing: border-box; }',
-      '.cc-config-title { font-size: 1rem; font-weight: 700; color: #3d2c00; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }',
-      '.cc-config-title span { background: linear-gradient(135deg, #c9a84c, #f0d882); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }',
-      '.cc-config-sub { font-size: 0.8rem; color: #888; margin-bottom: 14px; }',
-      '.cc-slots-wrap { margin-bottom: 14px; }',
-      '.cc-slots-label { font-size: 0.8rem; font-weight: 600; color: #555; margin-bottom: 8px; }',
-      '.cc-slots { display: flex; flex-wrap: wrap; gap: 8px; }',
-      '.cc-slot { width: 52px; height: 52px; border: 2px dashed #ccc; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; position: relative; background: #fafafa; transition: all 0.15s; flex-shrink: 0; }',
-      '.cc-slot:hover { border-color: #c9a84c; }',
-      '.cc-slot.cc-active { border: 2px solid #c9a84c; box-shadow: 0 0 0 3px rgba(201,168,76,0.25); background: #fffbf0; }',
-      '.cc-slot.cc-filled { border: 2px solid #c9a84c; background: #fff; }',
-      '.cc-slot img { width: 100%; height: 100%; object-fit: cover; border-radius: 50%; }',
-      '.cc-slot-num { font-size: 0.7rem; color: #bbb; font-weight: 700; }',
-      '.cc-slot-remove { position: absolute; top: -4px; right: -4px; width: 16px; height: 16px; background: #e53935; border: none; border-radius: 50%; color: white; font-size: 10px; cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; line-height: 1; z-index: 1; }',
-      '.cc-hint { font-size: 0.75rem; color: #aaa; font-style: italic; margin: 6px 0 12px; }',
-      '.cc-charms-label { font-size: 0.8rem; font-weight: 600; color: #555; margin-bottom: 8px; }',
-      '.cc-charms-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 8px; max-height: 280px; overflow-y: auto; padding-right: 4px; }',
-      '.cc-charms-grid::-webkit-scrollbar { width: 4px; }',
-      '.cc-charms-grid::-webkit-scrollbar-thumb { background: #ddd; border-radius: 4px; }',
-      '.cc-charm-item { border: 2px solid #eee; border-radius: 8px; padding: 8px 6px; cursor: pointer; text-align: center; transition: all 0.15s; background: #fff; }',
-      '.cc-charm-item:hover { border-color: #c9a84c; transform: translateY(-1px); }',
-      '.cc-charm-item.cc-disabled { opacity: 0.45; pointer-events: none; }',
-      '.cc-charm-img { width: 48px; height: 48px; border-radius: 50%; object-fit: cover; margin: 0 auto 4px; display: block; background: #f5f5f5; }',
-      '.cc-charm-img-ph { width: 48px; height: 48px; border-radius: 50%; background: linear-gradient(135deg, #f5f5f5, #e0e0e0); margin: 0 auto 4px; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }',
-      '.cc-charm-name { font-size: 0.65rem; color: #444; font-weight: 600; line-height: 1.2; margin-bottom: 2px; }',
-      '.cc-charm-price { font-size: 0.7rem; color: #c9a84c; font-weight: 700; }',
-      '.cc-charm-badge { font-size: 0.55rem; padding: 1px 4px; border-radius: 3px; font-weight: 700; display: inline-block; margin-top: 2px; }',
-      '.cc-badge-engrave { background: #e8f5e9; color: #388e3c; }',
-      '.cc-badge-premium { background: #fff3e0; color: #f57c00; }',
-      '.cc-extra-price { margin-top: 12px; padding: 10px 14px; background: #fffbf0; border: 1px solid #f0e6cc; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; }',
-      '.cc-extra-price strong { color: #c9a84c; font-size: 1rem; }',
-      '.cc-loading { padding: 20px; text-align: center; color: #aaa; font-size: 0.85rem; }',
-      '.cc-spinner-inline { width: 20px; height: 20px; border: 2px solid #eee; border-top-color: #c9a84c; border-radius: 50%; animation: cc-spin 0.7s linear infinite; display: inline-block; vertical-align: middle; margin-right: 8px; }',
-      '@keyframes cc-spin { to { transform: rotate(360deg); } }',
-      '.cc-empty { padding: 16px; text-align: center; color: #aaa; font-size: 0.8rem; border: 1px dashed #ddd; border-radius: 8px; }',
-      '@media (max-width: 749px) { .cc-charms-grid { grid-template-columns: repeat(auto-fill, minmax(80px, 1fr)); max-height: 220px; } }',
-    ].join('\n');
-    document.head.appendChild(style);
-  }
+  function filledSlots() { return S.slots.filter(Boolean); }
 
-  // Create the configurator DOM
-  function createContainer() {
-    var container = document.createElement('div');
-    container.id = 'cc-configurator';
-    container.innerHTML = '<div class="cc-loading"><span class="cc-spinner-inline"></span>Loading charm options...</div>';
-    return container;
-  }
-
+  // ─── RENDER ─────────────────────────────────────────────
   function render() {
-    var root = document.getElementById('cc-configurator');
+    var root = document.getElementById('cc-wrap');
     if (!root) return;
 
-    if (state.loading) {
-      root.innerHTML = '<div class="cc-loading"><span class="cc-spinner-inline"></span>Loading charm options...</div>';
+    if (S.loading) {
+      root.innerHTML = '<div class="cc-loading-wrap"><div class="cc-spinner"></div>Loading charm options…</div>';
       return;
     }
 
-    if (!state.config || !state.config.configured) {
+    if (!S.config || !S.config.configured) {
       root.innerHTML = '';
       return;
     }
 
-    var maxSlots = getMaxSlots();
-    var activeCharms = getActiveCharms();
-    var filledSlots = state.slots.filter(Boolean).length;
+    var maxSlots = S.config.maxSlots || 5;
+    var charms = getCharms();
+    var cats = getCats();
     var extra = totalExtra();
+    var filled = filledSlots();
 
-    var slotsHtml = '';
+    // Slots HTML
+    var slotsHTML = '';
     for (var i = 0; i < maxSlots; i++) {
-      var s = state.slots[i];
-      var isActive = state.selectedSlot === i;
-      var isFilled = !!s;
-      var innerHtml = '';
-      if (isFilled) {
-        innerHtml = (s.image
+      var s = S.slots[i];
+      var cls = 'cc-slot' + (S.active === i ? ' cc-active' : '') + (s ? ' cc-filled' : '');
+      var inner = '';
+      if (s) {
+        inner = (s.image
           ? '<img src="' + s.image + '" alt="' + s.name + '">'
-          : '<div class="cc-charm-img-ph">✨</div>') +
-          '<button class="cc-slot-remove" data-remove="' + i + '" title="Remove">×</button>';
+          : '<div class="cc-card-ph" style="width:100%;height:100%;margin:0;font-size:1.4rem">✨</div>') +
+          '<span class="cc-slot-rm" data-remove="' + i + '" title="Remove">✕</span>';
       } else {
-        innerHtml = '<span class="cc-slot-num">' + (i + 1) + '</span>';
+        inner = '<span class="cc-slot-empty-icon">' + (i + 1) + '</span>';
       }
-      slotsHtml += '<div class="cc-slot' + (isActive ? ' cc-active' : '') + (isFilled ? ' cc-filled' : '') + '" data-slot="' + i + '">' + innerHtml + '</div>';
+      slotsHTML += '<div class="' + cls + '" data-slot="' + i + '">' + inner + '</div>';
     }
 
-    var charmsHtml = '';
-    if (activeCharms.length === 0) {
-      charmsHtml = '<div class="cc-empty">No charms configured for this product.</div>';
+    // Categories HTML
+    var catsHTML = '';
+    if (cats.length > 2) {
+      cats.forEach(function (c) {
+        var label = c === 'all' ? 'All' : c.charAt(0).toUpperCase() + c.slice(1);
+        catsHTML += '<button class="cc-tab' + (S.cat === c ? ' cc-on' : '') + '" data-cat="' + c + '">' + label + '</button>';
+      });
+    }
+
+    // Grid HTML
+    var gridHTML = '';
+    if (charms.length === 0) {
+      gridHTML = '<div class="cc-empty">No charms available for this selection.</div>';
     } else {
-      var gridItems = '';
-      for (var ci = 0; ci < activeCharms.length; ci++) {
-        var c = activeCharms[ci];
-        var imgHtml = c.image
-          ? '<img class="cc-charm-img" src="' + c.image + '" alt="' + c.name + '">'
-          : '<div class="cc-charm-img-ph">✨</div>';
-        var badges = '';
-        if (c.engravable) badges += '<span class="cc-charm-badge cc-badge-engrave">Engravable</span>';
-        if (c.category === 'premium') badges += '<span class="cc-charm-badge cc-badge-premium">Premium</span>';
-        gridItems += '<div class="cc-charm-item' + (state.selectedSlot === null ? ' cc-disabled' : '') + '" data-charm="' + c.id + '">' +
-          imgHtml +
-          '<div class="cc-charm-name">' + c.name + '</div>' +
-          '<div class="cc-charm-price">' + fmt(c.price) + '</div>' +
-          badges +
-          '</div>';
-      }
-      charmsHtml = '<div class="cc-charms-grid" id="cc-charms-grid">' + gridItems + '</div>';
+      charms.forEach(function (c) {
+        var dim = S.active === null ? ' cc-dim' : '';
+        var badge = '';
+        if (c.engravable) badge = '<span class="cc-badge cc-b-eng">Engravable</span>';
+        else if (c.category === 'premium') badge = '<span class="cc-badge cc-b-prm">Premium</span>';
+        var imgEl = c.image
+          ? '<img src="' + c.image + '" alt="' + c.name + '">'
+          : '<div class="cc-card-ph">✨</div>';
+        gridHTML += '<div class="cc-card' + dim + '" data-cid="' + c.id + '">' + imgEl + '<div class="cc-card-name">' + c.name + '</div><div class="cc-card-price">' + fmt(c.price) + '</div>' + badge + '</div>';
+      });
     }
 
-    var extraHtml = '';
-    if (extra > 0) {
-      extraHtml = '<div class="cc-extra-price"><span>Charm addition: ' + filledSlots + ' charm' + (filledSlots !== 1 ? 's' : '') + '</span><strong>+ ' + fmt(extra) + '</strong></div>';
-    }
-
-    var hintText = state.selectedSlot !== null
-      ? 'Slot ' + (state.selectedSlot + 1) + ' selected — click a charm below'
+    var hint = S.active !== null
+      ? 'Slot ' + (S.active + 1) + ' selected — pick a charm below'
       : 'Click a slot to select it, then pick a charm';
 
-    root.innerHTML =
-      '<div class="cc-config-title"><span>✦</span> Customize with Charms</div>' +
-      '<div class="cc-config-sub">Add up to ' + maxSlots + ' charms · Each charm priced separately</div>' +
-      '<div class="cc-slots-wrap">' +
-        '<div class="cc-slots-label">Your charm slots (' + filledSlots + '/' + maxSlots + ' filled):</div>' +
-        '<div class="cc-slots" id="cc-slots-row">' + slotsHtml + '</div>' +
-        '<div class="cc-hint">' + hintText + '</div>' +
-      '</div>' +
-      '<div class="cc-charms-label">Available charms (' + activeCharms.length + '):</div>' +
-      charmsHtml +
-      extraHtml;
-
-    // Bind slot events
-    root.querySelectorAll('.cc-slot').forEach(function (el) {
-      el.addEventListener('click', function (e) {
-        var removeBtn = e.target.closest('[data-remove]');
-        if (removeBtn) {
-          var idx = parseInt(removeBtn.getAttribute('data-remove') || '0');
-          state.slots[idx] = null;
-          state.selectedSlot = null;
-          render();
-          updateCartHiddenFields();
-          return;
-        }
-        var slotIdx = parseInt(el.dataset.slot || '0');
-        state.selectedSlot = state.selectedSlot === slotIdx ? null : slotIdx;
-        render();
-      });
-    });
-
-    // Bind charm events
-    root.querySelectorAll('.cc-charm-item').forEach(function (el) {
-      el.addEventListener('click', function () {
-        if (state.selectedSlot === null) return;
-        var charmId = el.dataset.charm;
-        var charm = getActiveCharms().find(function (c) { return c.id === charmId; });
-        if (!charm) return;
-        var engraving = '';
-        if (charm.engravable) {
-          var text = prompt('Enter engraving text for "' + charm.name + '" (max 15 chars):', '');
-          engraving = (text || '').slice(0, 15);
-        }
-        state.slots[state.selectedSlot] = Object.assign({}, charm, { engraving: engraving });
-        // Move to next empty slot
-        var currentSlot = state.selectedSlot;
-        var next = -1;
-        for (var ni = currentSlot + 1; ni < state.slots.length; ni++) {
-          if (!state.slots[ni]) { next = ni; break; }
-        }
-        state.selectedSlot = next >= 0 ? next : null;
-        render();
-        updateCartHiddenFields();
-      });
-    });
-  }
-
-  // Update hidden form fields so charm data goes with the Add to Cart
-  function updateCartHiddenFields() {
-    var form = document.querySelector('form[action="/cart/add"]');
-    if (!form) return;
-
-    form.querySelectorAll('.cc-hidden-field').forEach(function (el) { el.remove(); });
-
-    var filled = state.slots.filter(Boolean);
-    if (filled.length === 0) return;
-
-    var charmSummary = filled.map(function (c, i) {
-      return (i + 1) + '. ' + c.name + (c.engraving ? ' ("' + c.engraving + '")' : '') + ' +₹' + c.price;
-    }).join(' | ');
-
-    function addHidden(name, value) {
-      var input = document.createElement('input');
-      input.type = 'hidden';
-      input.name = name;
-      input.value = value;
-      input.className = 'cc-hidden-field';
-      form.appendChild(input);
+    // Summary
+    var summaryHTML = '';
+    if (extra > 0) {
+      summaryHTML = '<div class="cc-summary"><div><div class="cc-sum-info">' +
+        filled.length + ' charm' + (filled.length !== 1 ? 's' : '') + ' added</div>' +
+        '<div class="cc-sum-names">' + filled.map(function (c) { return c.name; }).join(' · ') + '</div></div>' +
+        '<div class="cc-sum-price">+' + fmt(extra) + '</div></div>';
     }
 
-    addHidden('properties[_charms]', charmSummary);
-    addHidden('properties[_charm_count]', String(filled.length));
-    addHidden('properties[_charm_extra_price]', String(totalExtra()));
+    root.innerHTML =
+      // Header
+      '<div class="cc-head"><div class="cc-head-bar"></div><div class="cc-head-text"><span class="cc-gem"></span>Customize with Charms</div><div class="cc-head-bar right"></div></div>' +
+      // Necklace chain
+      '<div class="cc-necklace">' +
+        '<svg class="cc-chain-svg" height="2" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">' +
+          '<defs><linearGradient id="ccGold" x1="0%" y1="0%" x2="100%" y2="0%"><stop offset="0%" stop-color="transparent"/><stop offset="30%" stop-color="#c9a84c"/><stop offset="70%" stop-color="#c9a84c"/><stop offset="100%" stop-color="transparent"/></linearGradient></defs>' +
+          '<line x1="0" y1="1" x2="100%" y2="1" stroke="url(#ccGold)" stroke-width="2" stroke-dasharray="5 4"/>' +
+        '</svg>' +
+        slotsHTML +
+      '</div>' +
+      // Instruction
+      '<div class="cc-instruction">' + hint + '</div>' +
+      // Category tabs
+      (catsHTML ? '<div class="cc-tabs">' + catsHTML + '</div>' : '') +
+      // Grid label + grid
+      '<div class="cc-grid-label">Available charms (' + charms.length + ')</div>' +
+      '<div class="cc-grid">' + gridHTML + '</div>' +
+      // Summary
+      summaryHTML;
 
-    filled.forEach(function (c, i) {
-      addHidden('properties[Charm ' + (i + 1) + ']', c.name + (c.engraving ? ' — "' + c.engraving + '"' : ''));
-    });
-  }
-
-  // Watch for variant changes
-  function watchVariantChanges() {
-    document.querySelectorAll('[name="id"], select[name="id"]').forEach(function (el) {
-      el.addEventListener('change', function () {
-        var selectedOption = el.querySelector('option:checked') || el;
-        var variantTitle = (selectedOption.dataset && selectedOption.dataset.variantTitle)
-          || (document.querySelector('.product-form__selected-variant') && document.querySelector('.product-form__selected-variant').textContent)
-          || '';
-        state.selectedVariantTitle = variantTitle;
-        state.slots = [];
-        state.selectedSlot = null;
+    // ── EVENTS ──────────────────────────────────────────
+    root.querySelectorAll('.cc-slot').forEach(function (el) {
+      el.addEventListener('click', function (e) {
+        var rmBtn = e.target.closest('[data-remove]');
+        if (rmBtn) {
+          e.stopPropagation();
+          var idx = parseInt(rmBtn.getAttribute('data-remove'), 10);
+          S.slots[idx] = null;
+          if (S.active === idx) S.active = null;
+          syncCart();
+          render();
+          return;
+        }
+        var idx = parseInt(el.getAttribute('data-slot'), 10);
+        S.active = (S.active === idx) ? null : idx;
         render();
       });
     });
 
-    // Also watch Shopify variant change events
-    document.addEventListener('variant:change', function (e) {
-      state.selectedVariantTitle = (e.detail && e.detail.variant && e.detail.variant.title) || '';
-      state.slots = [];
-      state.selectedSlot = null;
-      render();
+    root.querySelectorAll('.cc-tab').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        S.cat = btn.getAttribute('data-cat');
+        render();
+      });
+    });
+
+    root.querySelectorAll('.cc-card').forEach(function (card) {
+      card.addEventListener('click', function () {
+        if (S.active === null) return;
+        var cid = card.getAttribute('data-cid');
+        var charm = null;
+        for (var i = 0; i < (S.config.charms || []).length; i++) {
+          if (S.config.charms[i].id === cid) { charm = S.config.charms[i]; break; }
+        }
+        if (!charm) return;
+
+        var copy = { id: charm.id, name: charm.name, image: charm.image, price: charm.price, category: charm.category, engravable: charm.engravable };
+
+        if (charm.engravable) {
+          var eng = prompt('Enter engraving text for "' + charm.name + '" (max 15 characters):', '');
+          if (eng !== null) copy.engraving = eng.slice(0, 15);
+        }
+
+        S.slots[S.active] = copy;
+
+        // Auto-advance to next empty slot
+        var max = S.config.maxSlots || 5;
+        var next = -1;
+        for (var i = S.active + 1; i < max; i++) {
+          if (!S.slots[i]) { next = i; break; }
+        }
+        if (next < 0) {
+          for (var i = 0; i < S.active; i++) {
+            if (!S.slots[i]) { next = i; break; }
+          }
+        }
+        S.active = next >= 0 ? next : null;
+
+        syncCart();
+        render();
+      });
     });
   }
 
-  function init() {
-    if (!PRODUCT_HANDLE) return;
+  // ─── CART SYNC ──────────────────────────────────────────
+  function syncCart() {
+    // Find form in Horizon (inside product-form custom element) or any theme
+    var form = document.querySelector('product-form form') ||
+               document.querySelector('form[action*="/cart/add"]');
+    if (!form) return;
 
-    injectStyles();
+    // Remove old fields
+    form.querySelectorAll('.cc-hidden').forEach(function (el) { el.remove(); });
 
-    // Wait for DOM
-    setTimeout(function () {
-      var container = createContainer();
-      var formContainer = findProductFormContainer();
-      if (formContainer) {
-        formContainer.parentNode && formContainer.parentNode.insertBefore(container, formContainer.nextSibling);
-      } else {
-        var product = document.querySelector('.product');
-        if (product) {
-          product.appendChild(container);
-        } else {
-          document.body.appendChild(container);
-        }
-      }
+    var filled = filledSlots();
+    if (!filled.length) return;
 
-      render();
+    function addField(name, value) {
+      var inp = document.createElement('input');
+      inp.type = 'hidden';
+      inp.name = name;
+      inp.value = value;
+      inp.className = 'cc-hidden';
+      form.appendChild(inp);
+    }
 
-      // Fetch charm config from App Proxy
-      var shop = (window.__charmcraft && window.__charmcraft.shop) ? window.__charmcraft.shop : SHOP;
-      var handle = (window.__charmcraft && window.__charmcraft.productHandle) ? window.__charmcraft.productHandle : PRODUCT_HANDLE;
-      var proxyUrl = '/apps/charmcraft?product=' + encodeURIComponent(handle) + '&shop=' + encodeURIComponent(shop);
-
-      fetch(proxyUrl)
-        .then(function (res) { return res.json(); })
-        .then(function (config) {
-          state.config = config;
-          state.slots = new Array(config.maxSlots || 5).fill(null);
-          state.loading = false;
-          render();
-          watchVariantChanges();
-          updateCartHiddenFields();
-        })
-        .catch(function () {
-          state.config = { configured: false };
-          state.loading = false;
-          render();
-        });
-    }, 500);
+    filled.forEach(function (c, i) {
+      addField('properties[Charm ' + (i + 1) + ']', c.name + (c.engraving ? ' — “' + c.engraving + '”' : ''));
+    });
+    addField('properties[Charm Extra]', fmt(totalExtra()));
+    addField('properties[_charm_ids]', filled.map(function (c) { return c.id; }).join(','));
   }
 
+  // ─── INJECT ─────────────────────────────────────────────
+  function inject() {
+    var styleEl = document.createElement('style');
+    styleEl.id = 'cc-styles';
+    styleEl.textContent = CSS;
+    document.head.appendChild(styleEl);
+
+    var div = document.createElement('div');
+    div.id = 'cc-wrap';
+    div.innerHTML = '<div class="cc-loading-wrap"><div class="cc-spinner"></div>Loading charm options…</div>';
+
+    // Horizon: inject after <buy-buttons> element
+    var target =
+      document.querySelector('buy-buttons') ||
+      document.querySelector('product-form') ||
+      document.querySelector('.product-form') ||
+      document.querySelector('form[action*="/cart/add"]');
+
+    if (target) {
+      target.insertAdjacentElement('afterend', div);
+    } else {
+      // Fallback: append to product container
+      var container = document.querySelector('.product, .product-single, [data-section-type="product"], main');
+      (container || document.body).appendChild(div);
+    }
+  }
+
+  // ─── VARIANT WATCHER ────────────────────────────────────
+  function watchVariants() {
+    // Horizon + Dawn dispatch 'variant:change'
+    document.addEventListener('variant:change', function (e) {
+      if (e.detail && e.detail.variant) {
+        S.variantTitle = e.detail.variant.title || '';
+        S.slots = Array(S.config ? S.config.maxSlots : 5).fill(null);
+        S.active = null;
+        syncCart();
+        render();
+      }
+    });
+  }
+
+  // ─── INIT ───────────────────────────────────────────────
+  function start() {
+    if (document.getElementById('cc-wrap')) return; // Already injected
+    inject();
+
+    fetch(API + '?product=' + encodeURIComponent(HANDLE))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        S.loading = false;
+        if (data && data.configured) {
+          S.config = data;
+          S.slots = Array(data.maxSlots || 5).fill(null);
+        } else {
+          S.config = { configured: false };
+        }
+        render();
+        watchVariants();
+      })
+      .catch(function () {
+        S.loading = false;
+        S.config = { configured: false };
+        render();
+      });
+  }
+
+  // Horizon uses custom elements that render async — wait a bit
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
+    document.addEventListener('DOMContentLoaded', function () { setTimeout(start, 400); });
   } else {
-    init();
+    setTimeout(start, 400);
   }
 })();

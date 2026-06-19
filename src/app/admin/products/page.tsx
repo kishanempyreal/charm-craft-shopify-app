@@ -69,8 +69,8 @@ function ProductsContent() {
                         {product.config ? (
                           <InlineStack gap="200">
                             <Badge tone="success">Charms configured</Badge>
-                            <Badge>{product.config.charms?.length || 0} charms</Badge>
-                            <Badge>{product.config.maxSlots} slots</Badge>
+                            <Badge>{String(product.config.charms?.length || 0) + ' charms'}</Badge>
+                            <Badge>{String(product.config.maxSlots) + ' slots'}</Badge>
                           </InlineStack>
                         ) : (
                           <Badge tone="attention">Not configured</Badge>

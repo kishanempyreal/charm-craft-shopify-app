@@ -151,7 +151,7 @@ function ConfigureContent({ productId }: { productId: string }) {
                   <Text variant="headingMd" as="h3">Available Charms (Default)</Text>
                   <Text variant="bodySm" tone="subdued" as="p">These charms will appear for ALL variants unless you configure per-variation below</Text>
                 </BlockStack>
-                <Badge>{selectedCharms.length} selected</Badge>
+                <Badge>{String(selectedCharms.length) + ' selected'}</Badge>
               </InlineStack>
 
               {charms.length === 0 ? (
