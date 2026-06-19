@@ -3,11 +3,11 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
-// Shopify OAuth sessions
 model Session {
   id          String   @id
   shop        String
@@ -23,14 +23,13 @@ model Session {
   @@index([shop])
 }
 
-// Saved necklace designs (per customer)
 model Design {
   id          String   @id @default(cuid())
   shop        String
   customerId  String?
   name        String   @default("My Design")
-  designData  String   // JSON string of charm positions
-  previewUrl  String?  // Generated preview image URL
+  designData  String
+  previewUrl  String?
   shareToken  String   @unique @default(cuid())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -40,7 +39,6 @@ model Design {
   @@index([shareToken])
 }
 
-// App settings per shop
 model AppSettings {
   id                String   @id @default(cuid())
   shop              String   @unique
@@ -55,13 +53,12 @@ model AppSettings {
   @@index([shop])
 }
 
-// Charm slot configurations (admin-defined slot positions per chain)
 model ChainSlotConfig {
   id        String   @id @default(cuid())
   shop      String
-  chainId   String   // Shopify product ID
+  chainId   String
   chainName String
-  slots     String   // JSON array of {id, x, y, label}
+  slots     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
