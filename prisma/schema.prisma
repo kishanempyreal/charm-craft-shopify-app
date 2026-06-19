@@ -98,7 +98,8 @@ model Design {
   shop        String
   customerId  String?
   name        String   @default("My Design")
-  designData  String   // JSON: { chainProductId, slots: [{charmId, engraving}] }
+  designData  String   // JSON: { handle, variant, slots }
+  canvasData  String?  // base64 PNG of the designed necklace
   shareToken  String   @unique @default(cuid())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
 
   const designs = await prisma.design.findMany({
     where: { shop, ...(customerId ? { customerId } : {}) },
-    orderBy: { updatedAt: 'desc' },
+    orderBy: { createdAt: 'desc' },
     take: 20,
   });
 
@@ -25,24 +25,29 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { shop, customerId, name, designData, previewUrl } = body;
+  const { shop, customerId, name, designData } = body;
   if (!shop) return NextResponse.json({ error: 'Missing shop' }, { status: 400 });
 
+  const raw = typeof designData === 'string' ? designData : JSON.stringify(designData || {});
+
+  const { canvasData } = body;
   const design = await prisma.design.create({
-    data: { shop, customerId, name: name || 'My Design', designData: JSON.stringify(designData), previewUrl },
+    data: { shop, customerId, name: name || 'My Design', designData: raw, ...(canvasData ? { canvasData } : {}) },
   });
 
-  return NextResponse.json({ design, shareUrl: `${process.env.NEXT_PUBLIC_APP_URL}/share/${design.shareToken}` });
+  const imageUrl = `${process.env.HOST || 'https://charmcraft-seven.vercel.app'}/api/designs/${design.shareToken}/image`;
+  return NextResponse.json({ design, shareToken: design.shareToken, imageUrl });
 }
 
 export async function PUT(req: NextRequest) {
   const body = await req.json();
-  const { id, name, designData, previewUrl } = body;
+  const { id, name, designData } = body;
   if (!id) return NextResponse.json({ error: 'Missing id' }, { status: 400 });
 
+  const raw = typeof designData === 'string' ? designData : JSON.stringify(designData || {});
   const design = await prisma.design.update({
     where: { id },
-    data: { name, designData: JSON.stringify(designData), previewUrl },
+    data: { name, designData: raw },
   });
 
   return NextResponse.json({ design });
