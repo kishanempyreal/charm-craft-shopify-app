@@ -25,7 +25,12 @@ export async function GET(req: NextRequest) {
 
     const configMap = new Map(configs.map(c => [c.shopifyProductId, c]));
 
-    const productList = products.map((p: any) => ({
+    // Only show products that can be charm-configured (exclude standalone charm/spacer products)
+    const eligible = products.filter((p: any) =>
+      !['Charm', 'Spacer', 'charm', 'spacer'].includes(p.product_type || '')
+    );
+
+    const productList = eligible.map((p: any) => ({
       id: String(p.id),
       title: p.title,
       handle: p.handle,
