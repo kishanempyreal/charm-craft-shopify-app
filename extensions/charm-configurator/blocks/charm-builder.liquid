@@ -1,0 +1,19 @@
+{% comment %} Charm Craft - Product Page Charm Selector {% endcomment %}
+
+<script>
+  window.__charmcraft = {
+    shop: {{ shop.permanent_domain | json }},
+    productHandle: {{ product.handle | json }},
+    appUrl: 'https://charmcraft-seven.vercel.app'
+  };
+</script>
+
+{{ 'charm-builder.js' | asset_url | script_tag }}
+
+{% schema %}
+{
+  "name": "Charm Builder",
+  "target": "section",
+  "settings": []
+}
+{% endschema %}

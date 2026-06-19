@@ -9,59 +9,107 @@ datasource db {
 }
 
 model Session {
-  id          String   @id
+  id          String    @id
   shop        String
   state       String
-  isOnline    Boolean  @default(false)
+  isOnline    Boolean   @default(false)
   scope       String?
   expires     DateTime?
   accessToken String
   userId      BigInt?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
   @@index([shop])
 }
 
+// Charm library — managed in admin, NOT Shopify products
+model Charm {
+  id          String   @id @default(cuid())
+  shop        String
+  name        String
+  description String?
+  image       String?
+  price       Float    @default(0)
+  category    String   @default("core") // core | premium | engravable | spacer
+  engravable  Boolean  @default(false)
+  active      Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  productCharms ProductCharm[]
+
+  @@index([shop])
+  @@index([shop, active])
+}
+
+// A Shopify product that has charm configuration enabled
+model ProductConfig {
+  id               String   @id @default(cuid())
+  shop             String
+  shopifyProductId String   // numeric Shopify product ID
+  productTitle     String
+  productHandle    String
+  productImage     String?
+  maxSlots         Int      @default(5)
+  active           Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  charms     ProductCharm[]
+  variations VariationConfig[]
+
+  @@unique([shop, shopifyProductId])
+  @@index([shop])
+  @@index([shop, productHandle])
+}
+
+// Which charms are available for a product (default / all variants)
+model ProductCharm {
+  id              String        @id @default(cuid())
+  productConfigId String
+  charmId         String
+  sortOrder       Int           @default(0)
+
+  productConfig   ProductConfig @relation(fields: [productConfigId], references: [id], onDelete: Cascade)
+  charm           Charm         @relation(fields: [charmId], references: [id], onDelete: Cascade)
+
+  @@unique([productConfigId, charmId])
+  @@index([productConfigId])
+}
+
+// Per-variant charm overrides
+model VariationConfig {
+  id              String        @id @default(cuid())
+  productConfigId String
+  variantTitle    String        // e.g. "Gold", "Silver - 16 inch"
+  charmIds        String        // JSON array of charm IDs
+  maxSlots        Int?          // override slots for this variant
+
+  productConfig   ProductConfig @relation(fields: [productConfigId], references: [id], onDelete: Cascade)
+
+  @@unique([productConfigId, variantTitle])
+  @@index([productConfigId])
+}
+
+// Customer saved designs
 model Design {
   id          String   @id @default(cuid())
   shop        String
   customerId  String?
   name        String   @default("My Design")
-  designData  String
-  previewUrl  String?
+  designData  String   // JSON: { chainProductId, slots: [{charmId, engraving}] }
   shareToken  String   @unique @default(cuid())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([shop])
-  @@index([customerId])
   @@index([shareToken])
 }
 
 model AppSettings {
-  id                String   @id @default(cuid())
-  shop              String   @unique
-  currencyCode      String   @default("INR")
-  enablingEngraving Boolean  @default(true)
-  maxCharms         Int      @default(8)
-  defaultChainId    String?
-  customCss         String?
-  configuratorTitle String   @default("Build Your Necklace")
-  updatedAt         DateTime @updatedAt
-
-  @@index([shop])
-}
-
-model ChainSlotConfig {
-  id        String   @id @default(cuid())
-  shop      String
-  chainId   String
-  chainName String
-  slots     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([shop, chainId])
-  @@index([shop])
+  id            String   @id @default(cuid())
+  shop          String   @unique
+  currencyCode  String   @default("INR")
+  updatedAt     DateTime @updatedAt
 }

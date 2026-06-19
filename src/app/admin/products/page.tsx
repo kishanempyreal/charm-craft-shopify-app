@@ -1,173 +1,99 @@
 'use client';
 import {
-  Page, Layout, Card, Text, BlockStack, InlineStack, Badge,
-  Button, DataTable, Thumbnail, EmptyState, TextField, Spinner,
-  Banner, Modal, Select, RangeSlider
+  Page, Layout, Card, ResourceList, ResourceItem, Thumbnail,
+  Text, Badge, Button, BlockStack, InlineStack, EmptyState, Spinner, Banner
 } from '@shopify/polaris';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { Suspense, useEffect, useState, useCallback } from 'react';
 
-interface Chain {
+interface ShopifyVariant { id: string; title: string; price: string; }
+interface ProductWithConfig {
   id: string;
-  shopifyId: string;
   title: string;
-  image: string;
-  variants: Array<{
-    id: string;
-    title: string;
-    price: string;
-    sku: string;
-    options: Array<{ name: string; value: string }>;
-  }>;
-  slotCount: number;
-  hasSlots: boolean;
+  handle: string;
+  image: string | null;
+  variants: ShopifyVariant[];
+  config: any | null;
 }
 
 function ProductsContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const shop = searchParams.get('shop') || 'jewellery-app-3.myshopify.com';
-  const [chains, setChains] = useState<Chain[]>([]);
+  const [products, setProducts] = useState<ProductWithConfig[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedChain, setSelectedChain] = useState<Chain | null>(null);
-  const [slotCount, setSlotCount] = useState(8);
-  const [saving, setSaving] = useState(false);
 
-  useEffect(() => {
-    fetch(`/api/products/chains?shop=${encodeURIComponent(shop)}`)
-      .then(r => r.json())
-      .then(data => { setChains(data.chains || []); setLoading(false); })
-      .catch(() => setLoading(false));
+  const load = useCallback(async () => {
+    setLoading(true);
+    const res = await fetch(`/api/product-configs?shop=${shop}`);
+    const data = await res.json();
+    setProducts(data.products || []);
+    setLoading(false);
   }, [shop]);
 
-  const saveSlotConfig = async () => {
-    if (!selectedChain) return;
-    setSaving(true);
-    await fetch('/api/products/slots', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        shop,
-        chainId: selectedChain.shopifyId,
-        chainName: selectedChain.title,
-        slotCount,
-      }),
-    });
-    setSaving(false);
-    setSelectedChain(null);
-    // Refresh
-    fetch(`/api/products/chains?shop=${encodeURIComponent(shop)}`)
-      .then(r => r.json())
-      .then(data => setChains(data.chains || []));
-  };
-
-  const rows = chains.map(chain => [
-    <InlineStack gap="200" key={chain.id} blockAlign="center">
-      <Thumbnail source={chain.image || ''} alt={chain.title} size="small" />
-      <Text as="span" variant="bodyMd">{chain.title}</Text>
-    </InlineStack>,
-    chain.variants.length,
-    <Badge tone={chain.hasSlots ? 'success' : 'warning'} key={chain.id}>
-      {chain.hasSlots ? `${chain.slotCount} slots` : 'No slots set'}
-    </Badge>,
-    chain.variants.map(v => `${v.title}: ₹${parseFloat(v.price).toFixed(0)}`).join(', '),
-    <InlineStack gap="200" key={chain.id}>
-      <Button
-        size="slim"
-        onClick={() => { setSelectedChain(chain); setSlotCount(chain.slotCount || 8); }}
-      >
-        Configure Slots
-      </Button>
-      <Button
-        size="slim"
-        url={`https://${shop}/admin/products/${chain.shopifyId.split('/').pop()}`}
-        external
-      >
-        Edit
-      </Button>
-    </InlineStack>,
-  ]);
+  useEffect(() => { load(); }, [load]);
 
   return (
-    <Page
-      title="Chain / Necklace Products"
-      subtitle="Configure chain variants and charm slot positions"
-      primaryAction={{
-        content: 'Add Chain Product',
-        url: `https://${shop}/admin/products/new`,
-        external: true,
-      }}
-    >
+    <Page title="Product Configurations" subtitle="Choose which products show the charm selector and configure their options">
       <Layout>
         <Layout.Section>
-          <Banner tone="info" title="How Chain Variants Work">
-            <p>
-              Each chain should have variants for <strong>Metal (Gold/Silver)</strong> and <strong>Length (16&quot;/18&quot;)</strong>.
-              The configurator will show the right base image + slot positions for each combination.
-            </p>
+          <Banner tone="info">
+            <p>For each product, click <strong>Configure Charms</strong> to set which charms appear on that product's page and optionally set different charms per variation.</p>
           </Banner>
         </Layout.Section>
-
         <Layout.Section>
-          <Card>
-            {loading ? (
-              <div style={{ textAlign: 'center', padding: '2rem' }}><Spinner /></div>
-            ) : chains.length === 0 ? (
-              <EmptyState
-                heading="No chain products found"
-                image=""
-                action={{
-                  content: 'Add chain in Shopify',
-                  url: `https://${shop}/admin/products/new`,
-                  external: true,
-                }}
-              >
-                <p>Add products tagged <code>cc-base</code> to set up chains/necklaces.</p>
+          {loading ? (
+            <Card><BlockStack gap="400" align="center"><Spinner /></BlockStack></Card>
+          ) : products.length === 0 ? (
+            <Card>
+              <EmptyState heading="No products found" image="">
+                <p>Add products to your Shopify store first, then configure charm options here.</p>
               </EmptyState>
-            ) : (
-              <DataTable
-                columnContentTypes={['text', 'numeric', 'text', 'text', 'text']}
-                headings={['Chain Name', 'Variants', 'Slot Config', 'Prices', 'Actions']}
-                rows={rows}
+            </Card>
+          ) : (
+            <Card>
+              <ResourceList
+                items={products}
+                renderItem={(product) => (
+                  <ResourceItem
+                    id={product.id}
+                    media={<Thumbnail source={product.image || ''} alt={product.title} size="medium" />}
+                    onClick={() => {}}
+                  >
+                    <InlineStack align="space-between" blockAlign="center" wrap={false}>
+                      <BlockStack gap="100">
+                        <Text variant="bodyMd" fontWeight="semibold" as="h3">{product.title}</Text>
+                        <Text variant="bodySm" tone="subdued" as="p">
+                          {product.variants.length} variant{product.variants.length !== 1 ? 's' : ''} · {product.handle}
+                        </Text>
+                        {product.config ? (
+                          <InlineStack gap="200">
+                            <Badge tone="success">Charms configured</Badge>
+                            <Badge>{product.config.charms?.length || 0} charms</Badge>
+                            <Badge>{product.config.maxSlots} slots</Badge>
+                          </InlineStack>
+                        ) : (
+                          <Badge tone="attention">Not configured</Badge>
+                        )}
+                      </BlockStack>
+                      <Button
+                        variant={product.config ? 'secondary' : 'primary'}
+                        onClick={() => router.push(`/admin/products/configure/${product.id}?shop=${shop}&title=${encodeURIComponent(product.title)}&handle=${product.handle}&image=${encodeURIComponent(product.image || '')}&variants=${encodeURIComponent(JSON.stringify(product.variants))}`)}
+                      >
+                        {product.config ? 'Edit Config' : 'Configure Charms'}
+                      </Button>
+                    </InlineStack>
+                  </ResourceItem>
+                )}
               />
-            )}
-          </Card>
+            </Card>
+          )}
         </Layout.Section>
       </Layout>
-
-      {/* Slot Config Modal */}
-      <Modal
-        open={!!selectedChain}
-        onClose={() => setSelectedChain(null)}
-        title={`Configure Slots: ${selectedChain?.title}`}
-        primaryAction={{ content: saving ? 'Saving...' : 'Save', onAction: saveSlotConfig, loading: saving }}
-        secondaryActions={[{ content: 'Cancel', onAction: () => setSelectedChain(null) }]}
-      >
-        <Modal.Section>
-          <BlockStack gap="400">
-            <Text as="p">
-              How many charm slots does this chain have? The configurator will evenly distribute them along the curve.
-            </Text>
-            <RangeSlider
-              label={`Number of charm slots: ${slotCount}`}
-              min={1}
-              max={12}
-              value={slotCount}
-              onChange={v => setSlotCount(v as number)}
-            />
-            <Text as="p" tone="subdued">
-              Visual slot positions can be fine-tuned in the Theme Editor after saving.
-            </Text>
-          </BlockStack>
-        </Modal.Section>
-      </Modal>
     </Page>
   );
 }
 
 export default function ProductsPage() {
-  return (
-    <Suspense fallback={<div>Loading...</div>}>
-      <ProductsContent />
-    </Suspense>
-  );
+  return <Suspense fallback={<div>Loading...</div>}><ProductsContent /></Suspense>;
 }
