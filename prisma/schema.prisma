@@ -52,6 +52,7 @@ model ProductConfig {
   productHandle    String
   productImage     String?
   maxSlots         Int      @default(5)
+  slotPositions    Json?    // [{x:0.3,y:0.7},{x:0.5,y:0.7}] — relative 0-1 coords on image
   active           Boolean  @default(true)
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt

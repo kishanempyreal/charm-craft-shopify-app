@@ -40,6 +40,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       configured: true,
       maxSlots: config.maxSlots,
+      slotPositions: config.slotPositions || [],
+      productImage: config.productImage,
       charms: config.charms.map(pc => ({
         id: pc.charm.id,
         name: pc.charm.name,

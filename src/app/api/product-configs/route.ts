@@ -34,8 +34,16 @@ export async function GET(req: NextRequest) {
       id: String(p.id),
       title: p.title,
       handle: p.handle,
+      productType: p.product_type || '',
       image: p.images?.[0]?.src || null,
-      variants: (p.variants || []).map((v: any) => ({ id: String(v.id), title: v.title, price: v.price })),
+      images: (p.images || []).map((img: any) => img.src),
+      variants: (p.variants || []).map((v: any) => ({
+        id: String(v.id),
+        title: v.title,
+        price: v.price,
+        image_id: v.image_id ? String(v.image_id) : null,
+      })),
+      shopifyImages: (p.images || []).map((img: any) => ({ id: String(img.id), src: img.src })),
       config: configMap.get(String(p.id)) || null,
     }));
 
@@ -59,6 +67,7 @@ export async function POST(req: NextRequest) {
         productHandle: body.productHandle,
         productImage: body.productImage || null,
         maxSlots: body.maxSlots || 5,
+        slotPositions: body.slotPositions || [],
         active: true,
       },
       update: {
@@ -66,6 +75,7 @@ export async function POST(req: NextRequest) {
         productHandle: body.productHandle,
         productImage: body.productImage || null,
         maxSlots: body.maxSlots || 5,
+        slotPositions: body.slotPositions || [],
         active: body.active !== false,
       },
     });
